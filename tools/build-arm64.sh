@@ -51,14 +51,15 @@ fetch_file() {
 }
 
 fetch_git() {
-    local url="$1" rev="$2" dest="$3"
+    local url="$1" rev="$2" dest="$3" sentinel="$4"
     if [ ! -d "$dest/.git" ]; then
         git clone --quiet --no-checkout "$url" "$dest"
     fi
-    if [ "$(git -C "$dest" rev-parse HEAD 2>/dev/null || true)" != "$rev" ]; then
-        git -C "$dest" fetch --quiet --depth 1 origin "$rev" || true
+    if [ ! -f "$dest/$sentinel" ] || [ "$(git -C "$dest" rev-parse HEAD 2>/dev/null || true)" != "$rev" ]; then
+        git -C "$dest" fetch --quiet --depth 1 origin "$rev" 2>/dev/null || git -C "$dest" fetch --quiet origin || true
         git -C "$dest" checkout --quiet --force --detach "$rev"
     fi
+    [ -f "$dest/$sentinel" ] || { echo "ERROR: missing $dest/$sentinel after checkout of $rev" >&2; exit 1; }
 }
 
 # 1. Host Zig compiler (hermetic aarch64-linux-gnu.2.28 C/C++20 cross-compiler)
@@ -76,9 +77,9 @@ export ZIG_LOCAL_CACHE_DIR="$DEPS/zig-cache"
 
 # 2. Pinned upstream third-party dependencies (SoftFloat 3e, ymfm, Dear ImGui)
 echo "[2/6] Checking pinned dependencies (SoftFloat, ymfm, Dear ImGui)..."
-fetch_git "$SOFTFLOAT_URL" "$SOFTFLOAT_REV" "$EXTERN/softfloat"
-fetch_git "$YMFM_URL" "$YMFM_REV" "$EXTERN/ymfm"
-fetch_git "$IMGUI_URL" "$IMGUI_REV" "$EXTERN/imgui"
+fetch_git "$SOFTFLOAT_URL" "$SOFTFLOAT_REV" "$EXTERN/softfloat" "source/softfloat_state.c"
+fetch_git "$YMFM_URL" "$YMFM_REV" "$EXTERN/ymfm" "src/ymfm_opn.cpp"
+fetch_git "$IMGUI_URL" "$IMGUI_REV" "$EXTERN/imgui" "imgui.cpp"
 
 # 3. Clean SDL2 2.32.10 headers (target-independent Linux LP64 + GLES 2.0)
 if [ ! -d "$DEPS/sdl2-src/SDL2-$SDL_VER/include" ]; then
