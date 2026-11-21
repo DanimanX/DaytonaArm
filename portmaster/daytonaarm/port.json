@@ -1,0 +1,35 @@
+{
+  "version": 3,
+  "name": "daytonaarm.zip",
+  "items": [
+    "Daytona USA.sh",
+    "Daytona USA 93.sh",
+    "Daytona USA Rev A.sh",
+    "daytonaarm"
+  ],
+  "items_opt": [],
+  "attr": {
+    "title": "DaytonaArm (Daytona USA)",
+    "porter": "DaytonaArm",
+    "desc": "Native ARM64 / OpenGL ES 2.0 handheld port of daytona-arcade-recomp (Sega Model 2 static recompilation for Daytona USA Deluxe '93 and Revision A 1994), engineered for Anbernic RG34XX (Allwinner H700 / Mali-G31) and compatible PortMaster AArch64 handhelds. Bring your own MAME ROM sets and PC-built cache modules.",
+    "desc_md": null,
+    "inst": "1. Copy your own legal MAME ROM archive(s) daytona.zip (Revision A, 1994) and/or daytona93.zip (Deluxe '93) into ports/daytonaarm/roms/.\n2. On a PC, run tools/build-arm64-cache.sh to statically recompile your ROM set(s) into native Cortex-A53 shared modules (cache/daytona-aarch64.so and/or cache/daytona93-aarch64.so) and copy them into ports/daytonaarm/cache/.\n3. Launch Daytona USA.sh (or a direct ROM launcher). Press Start+Select (or Menu) in-game for Options, Controls, and Hold Test Button (set Cabinet to SINGLE once in Test Mode).",
+    "inst_md": null,
+    "genres": [
+      "racing",
+      "arcade"
+    ],
+    "image": null,
+    "rtr": false,
+    "exp": true,
+    "runtime": null,
+    "reqs": [
+      "opengl",
+      "!lowres"
+    ],
+    "arch": [
+      "aarch64"
+    ],
+    "min_glibc": "2.28"
+  }
+}

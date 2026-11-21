@@ -34,6 +34,10 @@ M2Board::Images import_rom_set(const std::string &zip_path);
 
 // The MAME name of the set this build was recompiled from.
 const char *rom_set_name();
+#ifdef M2_DYNAMIC_ROMSET
+// Select the active ROM set at runtime when game code is loaded from a dynamic module (.so).
+void set_rom_set_name(const char *name);
+#endif
 
 // The MAME names of the sets an archive holds in full (every file there, at
 // its size and CRC), this build's own first: an archive can hold both (MAME's

@@ -98,10 +98,15 @@ const Set kSets[] = {
     {"daytona", kDaytona, std::size(kDaytona), 0x800000, 0x800020},
 };
 
+#ifdef M2_DYNAMIC_ROMSET
+static std::string g_dynamic_romset = M2_ROMSET;
+#endif
+
 const Set &this_set() {
+    const char *active = rom_set_name();
     for (const Set &s : kSets)
-        if (!std::strcmp(s.name, M2_ROMSET)) return s;
-    throw ZipError(std::string("unknown ROM set ") + M2_ROMSET);
+        if (!std::strcmp(s.name, active)) return s;
+    throw ZipError(std::string("unknown ROM set ") + active);
 }
 
 std::string hex8(uint32_t v) {
@@ -137,9 +142,10 @@ std::vector<std::string> rom_sets_in(const std::string &zip_path) {
         const auto checks = check_set(*z, s);
         return std::all_of(checks.begin(), checks.end(), [](const RomCheck &c) { return c.ok; });
     };
+    const char *active = rom_set_name();
     if (full(this_set())) sets.push_back(this_set().name);
     for (const Set &s : kSets)
-        if (std::strcmp(s.name, M2_ROMSET) && full(s)) sets.push_back(s.name);
+        if (std::strcmp(s.name, active) && full(s)) sets.push_back(s.name);
     return sets;
 }
 
@@ -190,7 +196,14 @@ M2Board::Images import_rom_set(const std::string &zip_path) {
     return img;
 }
 
+#ifdef M2_DYNAMIC_ROMSET
+void set_rom_set_name(const char *name) {
+    g_dynamic_romset = (name && *name) ? name : M2_ROMSET;
+}
+const char *rom_set_name() { return g_dynamic_romset.c_str(); }
+#else
 const char *rom_set_name() { return M2_ROMSET; }
+#endif
 
 std::vector<uint8_t> tgp_program(const M2Board::Images &img) {
     const Set &set = this_set();

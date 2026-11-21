@@ -40,6 +40,9 @@ dumps/
 # ---- Build output ----
 build/
 build-*/
+deps/
+dist/
+cache/
 cmake-build-*/
 CMakeCache.txt
 CMakeFiles/

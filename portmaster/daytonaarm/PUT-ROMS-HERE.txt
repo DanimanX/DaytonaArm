@@ -1,0 +1,21 @@
+DaytonaArm — Bring Your Own Data (BYOD)
+=======================================
+
+No copyrighted ROM files or ROM-derived compiled code are included in this package.
+
+Required files on your handheld SD card:
+1. Copy your legally dumped MAME ZIP ROM archive(s) into this folder (roms/):
+     - roms/daytona.zip     (Daytona USA Revision A, 1994 — supports LAN Link Play)
+     - roms/daytona93.zip   (Daytona USA Deluxe '93)
+   Note: Repack .7z archives as uncompressed/deflate .zip before copying to the handheld.
+
+2. Pre-compile the native ARM64 Cortex-A53 game module(s) on your PC using:
+     tools/build-arm64-cache.sh /path/to/ports/daytonaarm cortex_a53
+   Then copy the generated .so module(s) into cache/:
+     - cache/daytona-aarch64.so
+     - cache/daytona93-aarch64.so
+
+3. First launch tip:
+   Arcade factory defaults expect a linked twin cabinet. Open the pause menu
+   (Start+Select or Menu), go to Options -> HOLD TEST BUTTON, resume to enter
+   the arcade Test Menu, open GAME SYSTEM, and set LINK ID to SINGLE.
