@@ -90,7 +90,10 @@ inputs can be corrected independently:
 | D-pad and stick both steer the wrong way | `steer_invert=1` |
 | Nothing is reversed | both `0` (default) |
 
-Both keys are independent and combine (two inversions cancel), and the launcher writes
-`stick_invert` into the config on every run. It is not in the Options menu yet: set it
-in `daytonaarm.cfg` beside the launcher, or from the Options/Controls screen once it is
-surfaced there.
+Both keys are independent and combine (two inversions cancel). In the launcher menu
+they are **INVERT STEERING** (`steer_invert`, D-pad and stick) and **INVERT ANALOG STICK
+ONLY** (`stick_invert`, stick only), saved in `daytonaarm.cfg` on every run.
+
+Reported on an Anbernic RG351M: the left stick steered the wrong way while the D-pad was
+correct, so `steer_invert` fixed the stick and broke the D-pad. `stick_invert` is the
+right key for that device.
