@@ -326,7 +326,7 @@ int run_headless_bench(const CliOptions &cli, const std::string &data_dir, const
 
 rt::TestHold test_hold;
 
-constexpr int kOptionCount = 24;
+constexpr int kOptionCount = 25;
 constexpr int kBindRows = arm64::ActionCount + 2;
 
 void draw_menu(bool have_game, bool &options, bool &binds, int &selection, int capture,
@@ -410,17 +410,19 @@ void draw_menu(bool have_game, bool &options, bool &binds, int &selection, int c
             std::snprintf(lines[13], sizeof lines[13], "ANALOG STEERING CURVE: %s", kCurves[settings.steer_curve]);
             std::snprintf(lines[14], sizeof lines[14], "ANALOG DEADZONE: %d%%", settings.deadzone);
             std::snprintf(lines[15], sizeof lines[15], "INVERT STEERING: %s", settings.steer_invert ? "ON" : "OFF");
-            std::snprintf(lines[16], sizeof lines[16], "SKIP LAUNCHER ON BOOT: %s", settings.skip_launcher ? "ON" : "OFF");
-            std::snprintf(lines[17], sizeof lines[17], "LOG FPS TO CONSOLE: %s", settings.show_fps ? "ON" : "OFF");
-            std::snprintf(lines[18], sizeof lines[18], "HOLD TEST BUTTON: %s",
+            std::snprintf(lines[16], sizeof lines[16], "INVERT ANALOG STICK ONLY: %s",
+                          settings.stick_invert ? "ON" : "OFF");
+            std::snprintf(lines[17], sizeof lines[17], "SKIP LAUNCHER ON BOOT: %s", settings.skip_launcher ? "ON" : "OFF");
+            std::snprintf(lines[18], sizeof lines[18], "LOG FPS TO CONSOLE: %s", settings.show_fps ? "ON" : "OFF");
+            std::snprintf(lines[19], sizeof lines[19], "HOLD TEST BUTTON: %s",
                           test_hold.armed() ? "ARMED (RESUME TO ENTER TEST)" : "OFF");
-            std::snprintf(lines[19], sizeof lines[19], "LAN LINK PLAY (REV A): %s",
+            std::snprintf(lines[20], sizeof lines[20], "LAN LINK PLAY (REV A): %s",
                           settings.link_enabled ? "ON" : "OFF");
-            std::snprintf(lines[20], sizeof lines[20], "LINK NEXT IP: %s:%d (LISTEN %d)",
+            std::snprintf(lines[21], sizeof lines[21], "LINK NEXT IP: %s:%d (LISTEN %d)",
                           settings.next_address().c_str(), settings.next_port, settings.link_port);
-            std::snprintf(lines[21], sizeof lines[21], "LINK FRAME SYNC: %s", settings.link_sync ? "ON" : "OFF");
-            std::snprintf(lines[22], sizeof lines[22], "RESET DEFAULTS");
-            std::snprintf(lines[23], sizeof lines[23], "BACK");
+            std::snprintf(lines[22], sizeof lines[22], "LINK FRAME SYNC: %s", settings.link_sync ? "ON" : "OFF");
+            std::snprintf(lines[23], sizeof lines[23], "RESET DEFAULTS");
+            std::snprintf(lines[24], sizeof lines[24], "BACK");
 
             for (int i = 0; i < kOptionCount; ++i) {
                 if (ImGui::Selectable(lines[i], selection == i, 0, {0.0f, 26.0f})) selection = i;
@@ -820,14 +822,15 @@ int main(int argc, char **argv) {
                     case 13: settings.steer_curve = (settings.steer_curve + (dir < 0 ? 2 : 1)) % 3; changed = true; break;
                     case 14: settings.deadzone = std::clamp(settings.deadzone + (dir < 0 ? -5 : 5), 0, 40); changed = true; break;
                     case 15: settings.steer_invert = !settings.steer_invert; changed = true; break;
-                    case 16: settings.skip_launcher = !settings.skip_launcher; changed = true; break;
-                    case 17: settings.show_fps = !settings.show_fps; changed = true; break;
-                    case 18: if (test_hold.armed()) test_hold.cancel(); else test_hold.arm(); break;
-                    case 19: settings.link_enabled = !settings.link_enabled; changed = true; break;
-                    case 20: settings.next_ip[3] = (settings.next_ip[3] + (dir < 0 ? 255 : 1)) % 256; changed = true; break;
-                    case 21: settings.link_sync = !settings.link_sync; changed = true; break;
-                    case 22: if (act) { test_hold.cancel(); settings.defaults(); changed = true; status = "Settings reset to defaults."; } break;
-                    case 23: if (act) { options = false; selection = 3; wait_release = true; } break;
+                    case 16: settings.stick_invert = !settings.stick_invert; changed = true; break;
+                    case 17: settings.skip_launcher = !settings.skip_launcher; changed = true; break;
+                    case 18: settings.show_fps = !settings.show_fps; changed = true; break;
+                    case 19: if (test_hold.armed()) test_hold.cancel(); else test_hold.arm(); break;
+                    case 20: settings.link_enabled = !settings.link_enabled; changed = true; break;
+                    case 21: settings.next_ip[3] = (settings.next_ip[3] + (dir < 0 ? 255 : 1)) % 256; changed = true; break;
+                    case 22: settings.link_sync = !settings.link_sync; changed = true; break;
+                    case 23: if (act) { test_hold.cancel(); settings.defaults(); changed = true; status = "Settings reset to defaults."; } break;
+                    case 24: if (act) { options = false; selection = 3; wait_release = true; } break;
                     default: break;
                     }
                     if (changed) {
