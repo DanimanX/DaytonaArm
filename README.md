@@ -46,8 +46,13 @@ Measured on retail handhelds with the PortMaster `aarch64` build. The arcade fra
 |---|---|---|---|---|---|
 | **Anbernic RG351M** | Rockchip RK3326 (4× Cortex-A35 @ 1.3 GHz) | ARM Mali-G31 | `libmali.so` `g29p1-12eac0` (ARM Bifrost userspace blob) + `mali_kbase` kernel module | **ROCKNIX** (kernel 7.1.2, sway/Wayland) | **53.4 – 57.5 FPS — full speed** (57.5 = `FrameClock` ceiling) |
 | **Anbernic RG34XX** | Allwinner H700 (4× Cortex-A53, 1.704 GHz observed) | ARM Mali-G31 MP2 | `libmali.so` `r20p0-01rel0` (ARM Bifrost userspace blob) + `mali_kbase` kernel module | **KNULLI** (kernel 4.9.170, `schedutil`) | **57.1 FPS median (54.4 – 57.8)** — full speed ² |
+| **TrimUI Smart Pro** | Allwinner A133P (4× Cortex-A53, 1.8 GHz observed) | Imagination PowerVR GE8300 | `libGLESv2.so` (PowerVR userspace) + `pvrsrvkm` kernel module | **Spruce** (kernel 4.9.191) | **57.1 FPS median (54.3 – 57.8)**, 57.3 with the unpinned runtime — full speed ³ |
 
 ² The RG34XX reaches its `FrameClock` ceiling (57.524 Hz) with **either** build: 57.09 FPS median with the render loop pinned to Core 0 against 57.12 FPS unpinned across four alternating runs, a 0.03 FPS difference. The same inheritance bug is present there — its `mali-*` and audio threads also report `Cpus_allowed_list=0` — but the Cortex-A53 at 1.704 GHz has enough headroom to hit the ceiling despite it. Unpinning does cut main-thread run-queue wait from ~6.8% to ~2.4%, so the fix is neutral on H700 rather than an improvement, and measurably **not** a regression.
+
+³ Also already at the ceiling: 57.05 FPS median pinned against 57.27 FPS unpinned, with the worst sampled interval improving from 54.3 to 55.8 FPS. Rendering is fine on PowerVR GE8300 through the same GLES 2.0 path — nothing device-specific is needed. Note that Spruce does not let the launcher write `scaling_governor` (eight `Permission denied` lines in the port log on every run); the game holds full speed anyway.
+
+> **Non-contiguous online CPUs.** Spruce's Powersave mode hot-unplugs cores and can leave `{0,3}` online. Building the affinity mask as CPUs `0..n-1` then names an offline core and `pthread_setaffinity_np` returns `EINVAL`, silently doing nothing. `pin_current_thread_all()` and `pin_current_thread()` now parse `/sys/devices/system/cpu/online` and only ever name CPUs the kernel reports as online.
 
 The RK3326 numbers come from the `--fps` log over real play sessions. Before and after the Core-0 pinning fix:
 

@@ -61,29 +61,58 @@ int main() {
     }
 
     // Worker threads must each land on exactly the core they ask for.
-    std::vector<int> worker_cpus;
-    std::vector<int> worker_allowed;
-    auto worker = [&](int core) {
-        arm64::set_current_thread_name("affinity_test");
-        arm64::pin_current_thread(core);
-        worker_cpus.push_back(core);
-        worker_allowed.push_back(allowed_cpu_count());
+    // Each thread writes only its own slot: sharing a std::vector here would be
+    // a data race and made this check fail intermittently.
+    int allowed_first = -1, allowed_second = -1;
+    bool pinned_first = false, pinned_second = false;
+    auto spawn = [](int core, int &allowed, bool &pinned) {
+        std::thread t([core, &allowed, &pinned] {
+            arm64::set_current_thread_name("affinity_test");
+            pinned = arm64::pin_current_thread(core) == 0;
+            allowed = allowed_cpu_count();
+        });
+        t.join();
     };
-    {
-        std::thread a(worker, 0), b(worker, cpus > 1 ? 1 : 0);
-        a.join();
-        b.join();
-    }
-    check(worker_allowed.size() == 2, "two worker threads ran");
-    bool each_pinned = true;
-    for (int n : worker_allowed) {
-        if (n != 1) each_pinned = false;
-    }
-    check(each_pinned, "each pinned worker is restricted to a single core");
+    spawn(0, allowed_first, pinned_first);
+    spawn(cpus > 1 ? 1 : 0, allowed_second, pinned_second);
+    check(pinned_first && pinned_second, "pinning a worker to an online core succeeds");
+    check(allowed_first == 1 && allowed_second == 1,
+          "each pinned worker is restricted to a single core");
 
     // Out-of-range and negative requests are reported, not silently applied.
     check(arm64::pin_current_thread(-1) == -1, "negative core is refused");
     check(arm64::pin_current_thread(cpus + 4) == -1, "out-of-range core is refused");
+
+    // Kernel cpu-list parsing. A mask built as CPUs 0..n-1 is wrong whenever the
+    // online set is not contiguous (Spruce/A133P Powersave leaves {0,3}).
+    {
+        cpu_set_t set;
+        check(arm64::parse_cpu_list("0-3\n", set) == 4, "parse_cpu_list(\"0-3\") yields 4 CPUs");
+        check(CPU_ISSET(0, &set) && CPU_ISSET(3, &set), "parse_cpu_list(\"0-3\") sets 0 and 3");
+
+        check(arm64::parse_cpu_list("0,3\n", set) == 2, "parse_cpu_list(\"0,3\") yields 2 CPUs");
+        check(CPU_ISSET(0, &set) && CPU_ISSET(3, &set), "parse_cpu_list(\"0,3\") sets 0 and 3");
+        check(!CPU_ISSET(1, &set), "parse_cpu_list(\"0,3\") does NOT name offline CPU 1");
+
+        check(arm64::parse_cpu_list("0\n", set) == 1, "parse_cpu_list(\"0\") yields 1 CPU");
+        check(arm64::parse_cpu_list("0-2,4\n", set) == 4, "parse_cpu_list(\"0-2,4\") yields 4 CPUs");
+        check(!CPU_ISSET(3, &set) && CPU_ISSET(4, &set), "parse_cpu_list(\"0-2,4\") skips 3, includes 4");
+        check(arm64::parse_cpu_list("", set) == 0, "parse_cpu_list(\"\") yields 0");
+        check(arm64::parse_cpu_list(nullptr, set) == 0, "parse_cpu_list(nullptr) yields 0");
+        check(arm64::parse_cpu_list("70000-70001", set) == 0, "parse_cpu_list refuses out-of-range CPUs");
+    }
+
+    // The online mask must reflect the kernel, not a 0..n-1 assumption.
+    {
+        cpu_set_t set;
+        const int n = arm64::online_cpu_mask(set);
+        check(n == cpus, "online_cpu_mask agrees with cpu_count");
+        int counted = 0;
+        for (int i = 0; i < CPU_SETSIZE; ++i) {
+            if (CPU_ISSET(i, &set)) ++counted;
+        }
+        check(counted == n, "online_cpu_mask sets exactly the reported number of CPUs");
+    }
 
     std::printf(failures ? "%d check(s) failed\n" : "all checks passed\n", failures);
     return failures ? 1 : 0;
