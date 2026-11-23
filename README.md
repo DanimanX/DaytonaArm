@@ -39,9 +39,23 @@ Calibrated against real-hardware PS Vita `--gpu-gl --fast-inaccuracy` measuremen
 | **DaytonaArm GLES 2.0 (Exact lockstep code, no `--fast_inaccuracy`)** | ~8 – 11 ms | ~3.5 – 4.5 ms | ~3.5 – 4.5 ms | ~0.8 – 1.5 ms | ~4.0 – 7.0 ms | **~50 – 57.5 FPS** |
 | **CPU Software Rasterizer (`raster.cpp`, not used)** | ~45 – 80 ms | — | — | — | — | ~12 – 22 FPS *(unplayable)* |
 
+### Measured on Rockchip RK3326 (Anbernic RG351P / RG351M)
+
+Measured on real hardware (RG351M, ROCKNIX, sway/Wayland, Mali-G31 `g29p1`, kernel 7.1.2), not projected. Attract scene, `--fps` log, GPU draw work as reported by `gpu_cpu`:
+
+| Build | Frame rate | GPU draw (CPU side) | Main-thread run-queue wait |
+|---|---|---|---|
+| Before: render loop pinned to Core 0 | 24.5 – 26.9 FPS | 9 – 23 ms | 34% |
+| After: render loop unpinned | **53.4 – 57.5 FPS** | 0.5 – 9 ms | 9 – 11% |
+
+`pin_current_thread()` applied to the main thread before `SDL_Init()`/`gl_init()` also trapped PulseAudio and eight libmali threads on that core, so the render loop competed with the GPU driver for CPU0 while cores 1–3 idled. See `platform/arm64/thread_affinity.h`. The 57.5 FPS figures are the `FrameClock` ceiling (57.524 Hz), i.e. full arcade speed.
+
+Reference audio produces one fixed block per game frame, so frame dips below ~55 FPS can underrun it on this class of hardware; the Native audio engine is device-clocked and is not affected.
+
 ### Compatible Handhelds
 Compiled for **`aarch64-linux-gnu` / `glibc <= 2.28`** (statically linking `libc++` via Zig, zero `libstdc++.so` dependency, dynamically loading the firmware's hardware-accelerated `libSDL2-2.0.so.0` and OpenGL ES 2.0):
 - **Anbernic XX (Allwinner H700):** RG34XX, RG35XX Plus / H / SP / 2024, RG40XX H / V, RG CubeXX, RG28XX (muOS, Knulli, ROCKNIX, Stock OS)
+- **Rockchip RK3326 (Cortex-A35 @ 1.3 GHz, Mali-G31):** Anbernic RG351P / RG351M / RG351V (ROCKNIX, ArkOS, AmberELEC). **Measured on device** — see above. These devices wire the left stick opposite to SDL's convention: use **Options → Invert analog stick only** (`stick_invert`).
 - **Rockchip RK3566 (Cortex-A55 @ 1.8 GHz):** Powkiddy RGB30 / X55, Anbernic RG353 / RG503, Miyoo Flip
 - **Allwinner A133P / TrimUI:** TrimUI Smart Pro, TrimUI Brick
 - **ARM64 SBCs:** Raspberry Pi 4 / 5, Orange Pi Zero 2W / 3 (64-bit Linux)
