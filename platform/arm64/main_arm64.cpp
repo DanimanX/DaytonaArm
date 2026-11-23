@@ -44,7 +44,6 @@
 
 namespace {
 
-constexpr int kMainCore = 0;
 constexpr int kGeoCore = 1;
 constexpr int kSoundCore = 2;
 constexpr int kWorker2DCore = 3;
@@ -480,8 +479,13 @@ int main(int argc, char **argv) {
     }
     if (cli.show_fps) settings.show_fps = true;
 
-    // Pin main loop to Core 0 on 4-core ARM64 SoCs (Allwinner H700).
-    arm64::pin_current_thread(kMainCore);
+    // Spread the main thread over every core instead of pinning it to Core 0.
+    // This call happens before SDL_Init()/gl_init(), and children inherit the
+    // mask: pinning to one core here also pins PulseAudio and every libmali
+    // worker thread to that core, which starves the render loop (see
+    // thread_affinity.h). Dedicated worker cores are still claimed by the
+    // geometry, sound and System 24 threads pinning themselves.
+    arm64::pin_current_thread_all();
 
     if (cli.bench_frames > 0) return run_headless_bench(cli, cli.data_dir, settings.romset);
 

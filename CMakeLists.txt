@@ -385,6 +385,14 @@ add_executable(test_geo_stream tests/test_geo_stream.cpp)
 target_include_directories(test_geo_stream PRIVATE src)
 add_test(NAME geo_stream COMMAND test_geo_stream)
 
+# Platform/arm64 thread affinity contract: the main thread keeps every core
+# (a single-core mask is inherited by SDL and libmali threads and starves the
+# render loop), while dedicated workers still pin themselves to one core.
+find_package(Threads REQUIRED)
+add_executable(test_thread_affinity tests/test_thread_affinity.cpp)
+target_link_libraries(test_thread_affinity PRIVATE Threads::Threads)
+add_test(NAME thread_affinity COMMAND test_thread_affinity)
+
 add_executable(test_decode tests/test_decode.cpp)
 target_link_libraries(test_decode PRIVATE i960)
 add_test(NAME decode COMMAND test_decode)

@@ -23,7 +23,7 @@ Sega Model 2 runs Daytona USA at a native arcade frame rate of **57.524 FPS** (`
 | Subsystem | Anbernic RG34XX Hardware | Sega Model 2 Arcade Target | DaytonaArm Engineering |
 |---|---|---|---|
 | **CPU** | **Allwinner H700** — 4× ARM Cortex-A53 @ 1.5 GHz (`aarch64`) | Intel i960-KB @ 25 MHz + Fujitsu TGP MB86234 + Motorola 68000 @ 10 MHz | **Full 57.52 FPS** with `-O2 -mcpu=cortex_a53` static recompilation (`--fast_inaccuracy` + `M2_FAST_GEN/BUS/TGP/CPU/GEO`), native 64-bit SoftFloat (`FAST_INT64`), and hardware `UDIV/SDIV`. |
-| **4-Core Pipeline** | All 4 Linux cores schedulable (`pthread_setaffinity_np`) | Main CPU + Geometrizer + Sound Board + System 24 2D | **Core 0:** i960 + TGP + GLES submit · **Core 1:** Pipelined MAME Geometrizer · **Core 2:** 68000 + 2×MultiPCM + YM3438 · **Core 3:** ARM64 NEON System 24 2D indexer + audio callback. |
+| **4-Core Pipeline** | All 4 Linux cores schedulable (`pthread_setaffinity_np`) | Main CPU + Geometrizer + Sound Board + System 24 2D | **Cores 0–3 (unpinned):** i960 + TGP + GLES submit, plus the threads SDL and libmali inherit · **Core 1:** Pipelined MAME Geometrizer · **Core 2:** 68000 + 2×MultiPCM + YM3438 · **Core 3:** ARM64 NEON System 24 2D indexer + audio callback. The render loop is deliberately not pinned to one core: affinity masks are inherited at thread creation, so a single-core mask applied before `SDL_Init`/`gl_init` also traps PulseAudio and every libmali worker thread there. |
 | **GPU** | **ARM Mali-G31 MP2** (OpenGL ES 2.0 / 3.2, **no Vulkan**) | Model 2 fixed-function 3D + System 24 4-layer tilemaps | Desktop `SDL_GPU` (Vulkan) does not run on H700. DaytonaArm implements a dedicated **OpenGL ES 2.0 / GLSL ES 1.00** renderer (`platform/arm64/gpu_gles.cpp`) with per-polygon Model 2 priority depth ranks, GPU-filtered 4-bit texel index shaders, dirty-row `glTexSubImage2D`, and zero-stall VBO buffer orphaning. |
 | **RAM** | **1 GB LPDDR4** (~750–850 MB free) | ~82.5 MB ROMs + Model 2 RAM + GPU textures | **~175–210 MB total peak RSS** (over 550 MB free headroom; `.zip` only, omitting `.7z` solid-archive RAM spikes). |
 | **Display** | 3.4" IPS **720×480** (3:2, 60 Hz) | 496×384 (4:3, 57.524 Hz) | Crisp **620×480** centered (exact 4:3 arcade aspect) or **720×480** full-screen toggle, with adaptive-rate reference audio eliminating 57.52 ↔ 60 Hz crackles. |
@@ -33,7 +33,7 @@ Sega Model 2 runs Daytona USA at a native arcade frame rate of **57.524 FPS** (`
 
 Calibrated against real-hardware PS Vita `--gpu-gl --fast-inaccuracy` measurements (`57.3 FPS` median on 3× Cortex-A9 @ 444 MHz + SGX543MP4+ @ 166 MHz at 703×544):
 
-| Execution Path | Core 0 (i960+TGP+GL) | Core 1 (Geo) | Core 2 (Sound) | Core 3 (2D NEON) | Mali-G31 GPU | Expected FPS |
+| Execution Path | Cores 0–3 (i960+TGP+GL) | Core 1 (Geo) | Core 2 (Sound) | Core 3 (2D NEON) | Mali-G31 GPU | Expected FPS |
 |---|---|---|---|---|---|---|
 | **DaytonaArm GLES 2.0 + `.so` Cache (`-O2`, `--fast_inaccuracy`)** | ~4.5 – 6.5 ms | ~3.2 – 4.2 ms | ~3.5 – 4.5 ms *(or <1 ms Native)* | ~0.8 – 1.5 ms | ~4.0 – 7.0 ms | **57.52 FPS locked** *(100% arcade speed)* |
 | **DaytonaArm GLES 2.0 (Exact lockstep code, no `--fast_inaccuracy`)** | ~8 – 11 ms | ~3.5 – 4.5 ms | ~3.5 – 4.5 ms | ~0.8 – 1.5 ms | ~4.0 – 7.0 ms | **~50 – 57.5 FPS** |
