@@ -72,3 +72,25 @@ the touch screen and the menus keep their direct mapping. With the tick off the 
 
 Settings (Launcher > Controls, saved in `launcher.ini`): `gamepad_fix` (default off), `wheel_weight`, `wheel_turnin`,
 `wheel_return`, `stick_range`, `stick_expo`.
+
+## 4. Inverting one input without inverting the other
+
+Handhelds do not agree on which way the left stick reports. Desktops, Xbox pads and
+SDL's own convention put `SDL_CONTROLLER_AXIS_LEFTX` positive to the right, and the
+built-in mappings follow that. Some Linux handhelds wire (or map) the stick the other
+way round, so pushing right reads as negative and the car steers left.
+
+`steer_invert` flips both the D-pad and the stick, which is wrong when only one of them
+is reversed. `stick_invert` (config key, analog only) flips just the stick, so the two
+inputs can be corrected independently:
+
+| Symptom | Setting |
+| --- | --- |
+| Only the analogue stick steers the wrong way | `stick_invert=1` |
+| D-pad and stick both steer the wrong way | `steer_invert=1` |
+| Nothing is reversed | both `0` (default) |
+
+Both keys are independent and combine (two inversions cancel), and the launcher writes
+`stick_invert` into the config on every run. It is not in the Options menu yet: set it
+in `daytonaarm.cfg` beside the launcher, or from the Options/Controls screen once it is
+surfaced there.

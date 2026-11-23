@@ -121,7 +121,8 @@ struct Settings {
     bool gamepad_menu = true;       // Step-wise menu selection
     int steer_curve = 0;            // 0 Linear, 1 Soft, 2 Extra Soft (analog sticks)
     int deadzone = 12;
-    bool steer_invert = false;
+    bool steer_invert = false;      // D-pad and analog
+    bool stick_invert = false;      // analog stick only (device wiring differs from SDL's convention)
     bool skip_launcher = false;
     bool show_fps = false;
     bool link_enabled = false;
@@ -181,6 +182,7 @@ struct Settings {
             else if (!std::strcmp(key, "steer_curve")) steer_curve = value;
             else if (!std::strcmp(key, "deadzone")) deadzone = value;
             else if (!std::strcmp(key, "steer_invert")) steer_invert = value != 0;
+            else if (!std::strcmp(key, "stick_invert")) stick_invert = value != 0;
             else if (!std::strcmp(key, "skip_launcher")) skip_launcher = value != 0;
             else if (!std::strcmp(key, "show_fps")) show_fps = value != 0;
             else if (!std::strcmp(key, "link_enabled")) link_enabled = value != 0;
@@ -210,6 +212,7 @@ struct Settings {
                      volume, music_volume, effects_volume, int(mute), int(native_audio));
         std::fprintf(f, "gamepad_fix=%d\ngamepad_menu=%d\nsteer_curve=%d\ndeadzone=%d\nsteer_invert=%d\n",
                      int(gamepad_fix), int(gamepad_menu), steer_curve, deadzone, int(steer_invert));
+        std::fprintf(f, "stick_invert=%d\n", int(stick_invert));
         std::fprintf(f, "skip_launcher=%d\nshow_fps=%d\n", int(skip_launcher), int(show_fps));
         std::fprintf(f, "link_enabled=%d\nlink_sync=%d\nlink_port=%d\nnext_port=%d\n",
                      int(link_enabled), int(link_sync), link_port, next_port);
@@ -587,6 +590,7 @@ int main(int argc, char **argv) {
         native_audio.mute(settings.mute);
         controls.set_deadzone(float(settings.deadzone) / 100.0f);
         controls.set_steer_invert(settings.steer_invert);
+        controls.set_stick_invert(settings.stick_invert);
         controls.set_steer_curve(settings.steer_curve);
         controls.set_gamepad_fix(settings.gamepad_fix);
         controls.set_gamepad_menu(settings.gamepad_menu);
@@ -933,9 +937,24 @@ int main(int argc, char **argv) {
             const double sec = double(after - fps_start) / 1e6;
             display_fps = sec > 0.0 ? double(fps_frames) / sec : 0.0;
             if (settings.show_fps && game && !menu) {
-                std::fprintf(stderr, "[DaytonaArm] %.2f FPS | gpu_cpu=%.2f ms | 2d_worker=%.2f ms | verts=%zu\n",
-                             display_fps, gpu.last_gpu_ms(), double(gpu.last_2d_worker_us()) / 1000.0,
-                             gpu.submitted_vertices());
+                // Reference audio is produced one fixed 1/57.524 s block per game frame
+                // (GameLoop::execute_deferred_sound), so whenever the frame rate sits
+                // below 57.524 Hz the sound board under-produces. AudioRate can follow
+                // that down to -5% (54.6 FPS) by playing slower; past that the queue
+                // empties and the output re-primes with a silent gap. Report the queue
+                // and underruns so a stutter can be attributed instead of guessed at.
+                if (!active_native_audio) {
+                    const auto astats = audio.stats();
+                    std::fprintf(stderr,
+                                 "[DaytonaArm] %.2f FPS | gpu_cpu=%.2f ms | 2d_worker=%.2f ms | verts=%zu"
+                                 " | audio: underruns=%u ratio=%.4f queued=%.1f ms\n",
+                                 display_fps, gpu.last_gpu_ms(), double(gpu.last_2d_worker_us()) / 1000.0,
+                                 gpu.submitted_vertices(), astats.underruns, astats.ratio, astats.queued_ms);
+                } else {
+                    std::fprintf(stderr, "[DaytonaArm] %.2f FPS | gpu_cpu=%.2f ms | 2d_worker=%.2f ms | verts=%zu\n",
+                                 display_fps, gpu.last_gpu_ms(), double(gpu.last_2d_worker_us()) / 1000.0,
+                                 gpu.submitted_vertices());
+                }
             }
             fps_start = after;
             fps_frames = 0;

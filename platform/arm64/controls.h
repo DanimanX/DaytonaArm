@@ -277,6 +277,7 @@ public:
         const float ax = std::fabs(pad.lx);
         if (ax > deadzone_) raw_stick = std::copysign((ax - deadzone_) / (1.0f - deadzone_), pad.lx);
         if (steer_invert_) raw_stick = -raw_stick;
+        if (stick_invert_) raw_stick = -raw_stick; // analog-only correction; pairs with steer_invert_
 
         const float d_right = (pad.buttons & b[SteerRight]) ? 1.0f : 0.0f;
         const float d_left = (pad.buttons & b[SteerLeft]) ? 1.0f : 0.0f;
@@ -371,6 +372,11 @@ public:
     void set_deadzone(float v) { deadzone_ = std::clamp(v, 0.0f, 0.4f); }
     void set_steer_curve(int v) { steer_curve_ = std::clamp(v, 0, 2); }
     void set_steer_invert(bool v) { steer_invert_ = v; }
+    // Analog stick only. Some handhelds wire the left stick the opposite way to
+    // SDL's convention, and inverting the shared flag to fix that would also
+    // invert the D-pad.
+    bool stick_invert() const { return stick_invert_; }
+    void set_stick_invert(bool v) { stick_invert_ = v; }
     void set_gamepad_fix(bool v) { gamepad_fix_ = v; }
     void set_gamepad_menu(bool v) { gamepad_menu_ = v; }
     void set_bindings(const Bindings &b) { bindings_ = b; bindings_.sanitize(); }
@@ -386,7 +392,7 @@ private:
     uint32_t held_ = 0;
     int gear_ = 1, steer_curve_ = 0;
     float deadzone_ = 0.12f;
-    bool steer_invert_ = false, coin_used_ = false;
+    bool steer_invert_ = false, stick_invert_ = false, coin_used_ = false;
     bool gamepad_fix_ = true;  // ON by default for RG34XX D-pad playability
     bool gamepad_menu_ = true; // ON by default for clean menu selection
     float wheel_weight_ = 1.0f, wheel_turnin_ = 0.09f, wheel_return_ = 0.14f;
