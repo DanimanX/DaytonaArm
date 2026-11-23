@@ -39,23 +39,35 @@ Calibrated against real-hardware PS Vita `--gpu-gl --fast-inaccuracy` measuremen
 | **DaytonaArm GLES 2.0 (Exact lockstep code, no `--fast_inaccuracy`)** | ~8 – 11 ms | ~3.5 – 4.5 ms | ~3.5 – 4.5 ms | ~0.8 – 1.5 ms | ~4.0 – 7.0 ms | **~50 – 57.5 FPS** |
 | **CPU Software Rasterizer (`raster.cpp`, not used)** | ~45 – 80 ms | — | — | — | — | ~12 – 22 FPS *(unplayable)* |
 
-### Measured on Rockchip RK3326 (Anbernic RG351P / RG351M)
+### Tested Devices (Real Hardware)
+Measured on retail handhelds with the PortMaster `aarch64` build. The arcade frame rate is `57.524 FPS` (100% speed).
 
-Measured on real hardware (RG351M, ROCKNIX, sway/Wayland, Mali-G31 `g29p1`, kernel 7.1.2), not projected. Attract scene, `--fps` log, GPU draw work as reported by `gpu_cpu`:
+| Device | SoC | GPU | GPU module (GLES driver) | OS / CFW | Tested performance |
+|---|---|---|---|---|---|
+| **Anbernic RG351M** | Rockchip RK3326 (4× Cortex-A35 @ 1.3 GHz) | ARM Mali-G31 | `libmali.so` `g29p1-12eac0` (ARM Bifrost userspace blob) + `mali_kbase` kernel module | **ROCKNIX** (kernel 7.1.2, sway/Wayland) | **53.4 – 57.5 FPS — full speed** (57.5 = `FrameClock` ceiling) |
+| **Anbernic RG34XX** | Allwinner H700 (4× Cortex-A53 @ 1.5 GHz) | ARM Mali-G31 MP2 | `libmali.so` (ARM Bifrost userspace blob) + `mali_kbase` kernel module | **Knulli** | **57.52 FPS — full speed** *(reference platform)* ¹ |
 
-| Build | Frame rate | GPU draw (CPU side) | Main-thread run-queue wait |
+¹ Reference platform. Its figure is the project's frame-time target, not an independent measurement taken in this release; the RK3326 row above is the one measured on device.
+
+The RK3326 numbers come from the `--fps` log over real play sessions. Before and after the Core-0 pinning fix:
+
+| Anbernic RG351M, 4 cores online | Frame rate | GPU draw (CPU side, `gpu_cpu`) | Main-thread run-queue wait |
 |---|---|---|---|
-| Before: render loop pinned to Core 0 | 24.5 – 26.9 FPS | 9 – 23 ms | 34% |
-| After: render loop unpinned | **53.4 – 57.5 FPS** | 0.5 – 9 ms | 9 – 11% |
+| Render loop pinned to Core 0 (≤ v1.0.0) | 24.5 – 26.9 FPS | 9 – 23 ms | 34% |
+| Render loop unpinned (v1.1.0+) | **53.4 – 57.5 FPS** | 0.5 – 9 ms | 9 – 11% |
 
-`pin_current_thread()` applied to the main thread before `SDL_Init()`/`gl_init()` also trapped PulseAudio and eight libmali threads on that core, so the render loop competed with the GPU driver for CPU0 while cores 1–3 idled. See `platform/arm64/thread_affinity.h`. The 57.5 FPS figures are the `FrameClock` ceiling (57.524 Hz), i.e. full arcade speed.
-
-Reference audio produces one fixed block per game frame, so frame dips below ~55 FPS can underrun it on this class of hardware; the Native audio engine is device-clocked and is not affected.
+> **Why the RK3326 was stuck at ~26 FPS.** `pin_current_thread(kMainCore)` ran before `SDL_Init()` and `gl_init()`, and affinity masks are inherited when a thread is created. PulseAudio's mainloop and hotplug threads, the SDL timer and eight libmali threads (`mali-cmar-backend`, 4× `mali-utility-worker`, `mali-compiler`, `mali-mem-purge`) were therefore all confined to CPU0 together with the render loop, while cores 1–3 idled. The loop was runnable ~95% of the time but obtained ~51% of a core: `schedstat` showed 9.10 s of 26 s waiting in the run queue, with `cpu-migrations=1` for the whole run. The dedicated worker cores were the only threads with no queueing at all. Widening the main thread to every online CPU is the whole fix — see `platform/arm64/thread_affinity.h`. At 1.3 GHz the Cortex-A35 holds full speed using about 75% of one core out of four.
+>
+> **Left stick is reversed on this family.** RG351-class devices wire the left stick opposite to SDL's convention. *Invert steering* flips the D-pad as well, so v1.1.0 adds **Options → Invert analog stick only** (`stick_invert`).
+>
+> **Audio.** Reference audio advances one fixed block per game frame, so it under-produces whenever the frame rate sits below 57.524 Hz and `AudioRate` can only follow that down to −5% (54.6 FPS). On RK3326, frame dips to ~53 FPS gave 6 audible gaps in 45 s. The **Native** engine is device-clocked and is not affected — use *Audio engine → Native* if you hear stutters.
 
 ### Compatible Handhelds
+*Compiled for* the list below; tested devices and their measured frame rates are in the table above.
+
 Compiled for **`aarch64-linux-gnu` / `glibc <= 2.28`** (statically linking `libc++` via Zig, zero `libstdc++.so` dependency, dynamically loading the firmware's hardware-accelerated `libSDL2-2.0.so.0` and OpenGL ES 2.0):
 - **Anbernic XX (Allwinner H700):** RG34XX, RG35XX Plus / H / SP / 2024, RG40XX H / V, RG CubeXX, RG28XX (muOS, Knulli, ROCKNIX, Stock OS)
-- **Rockchip RK3326 (Cortex-A35 @ 1.3 GHz, Mali-G31):** Anbernic RG351P / RG351M / RG351V (ROCKNIX, ArkOS, AmberELEC). **Measured on device** — see above. These devices wire the left stick opposite to SDL's convention: use **Options → Invert analog stick only** (`stick_invert`).
+- **Rockchip RK3326 (Cortex-A35 @ 1.3 GHz, Mali-G31):** Anbernic RG351P / RG351M / RG351V (ROCKNIX, ArkOS, AmberELEC)
 - **Rockchip RK3566 (Cortex-A55 @ 1.8 GHz):** Powkiddy RGB30 / X55, Anbernic RG353 / RG503, Miyoo Flip
 - **Allwinner A133P / TrimUI:** TrimUI Smart Pro, TrimUI Brick
 - **ARM64 SBCs:** Raspberry Pi 4 / 5, Orange Pi Zero 2W / 3 (64-bit Linux)
