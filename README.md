@@ -45,9 +45,9 @@ Measured on retail handhelds with the PortMaster `aarch64` build. The arcade fra
 | Device | SoC | GPU | GPU module (GLES driver) | OS / CFW | Tested performance |
 |---|---|---|---|---|---|
 | **Anbernic RG351M** | Rockchip RK3326 (4× Cortex-A35 @ 1.3 GHz) | ARM Mali-G31 | `libmali.so` `g29p1-12eac0` (ARM Bifrost userspace blob) + `mali_kbase` kernel module | **ROCKNIX** (kernel 7.1.2, sway/Wayland) | **53.4 – 57.5 FPS — full speed** (57.5 = `FrameClock` ceiling) |
-| **Anbernic RG34XX** | Allwinner H700 (4× Cortex-A53 @ 1.5 GHz) | ARM Mali-G31 MP2 | `libmali.so` (ARM Bifrost userspace blob) + `mali_kbase` kernel module | **Knulli** | **57.52 FPS — full speed** *(reference platform)* ¹ |
+| **Anbernic RG34XX** | Allwinner H700 (4× Cortex-A53, 1.704 GHz observed) | ARM Mali-G31 MP2 | `libmali.so` `r20p0-01rel0` (ARM Bifrost userspace blob) + `mali_kbase` kernel module | **KNULLI** (kernel 4.9.170, `schedutil`) | **57.1 FPS median (54.4 – 57.8)** — full speed ² |
 
-¹ Reference platform. Its figure is the project's frame-time target, not an independent measurement taken in this release; the RK3326 row above is the one measured on device.
+² The RG34XX reaches its `FrameClock` ceiling (57.524 Hz) with **either** build: 57.09 FPS median with the render loop pinned to Core 0 against 57.12 FPS unpinned across four alternating runs, a 0.03 FPS difference. The same inheritance bug is present there — its `mali-*` and audio threads also report `Cpus_allowed_list=0` — but the Cortex-A53 at 1.704 GHz has enough headroom to hit the ceiling despite it. Unpinning does cut main-thread run-queue wait from ~6.8% to ~2.4%, so the fix is neutral on H700 rather than an improvement, and measurably **not** a regression.
 
 The RK3326 numbers come from the `--fps` log over real play sessions. Before and after the Core-0 pinning fix:
 
