@@ -388,10 +388,17 @@ add_test(NAME geo_stream COMMAND test_geo_stream)
 # Platform/arm64 thread affinity contract: the main thread keeps every core
 # (a single-core mask is inherited by SDL and libmali threads and starves the
 # render loop), while dedicated workers still pin themselves to one core.
-find_package(Threads REQUIRED)
-add_executable(test_thread_affinity tests/test_thread_affinity.cpp)
-target_link_libraries(test_thread_affinity PRIVATE Threads::Threads)
-add_test(NAME thread_affinity COMMAND test_thread_affinity)
+# Linux-only: thread_affinity.h needs pthread_setaffinity_np and cpu_set_t,
+# which neither MSVC/mingw nor macOS provide, and the desktop build never
+# compiles platform/arm64 otherwise.
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  find_package(Threads REQUIRED)
+  add_executable(test_thread_affinity tests/test_thread_affinity.cpp)
+  target_link_libraries(test_thread_affinity PRIVATE Threads::Threads)
+  add_test(NAME thread_affinity COMMAND test_thread_affinity)
+else()
+  message(STATUS "Skipping test_thread_affinity: thread affinity is Linux-only")
+endif()
 
 add_executable(test_decode tests/test_decode.cpp)
 target_link_libraries(test_decode PRIVATE i960)

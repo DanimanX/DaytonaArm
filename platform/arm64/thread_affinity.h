@@ -15,6 +15,13 @@
 // all cores instead cut that queueing to ~5% and reached the 57.52 Hz target.
 #pragma once
 
+// Linux-only: both the core-pinning call and cpu_set_t come from
+// pthread_setaffinity_np / sched.h, which MSVC, mingw and macOS do not provide.
+// Fail loudly here instead of at a missing <pthread.h> deep in a build log.
+#if !defined(__linux__)
+#error "thread_affinity.h is Linux-only (needs pthread_setaffinity_np and cpu_set_t)"
+#endif
+
 #include <pthread.h>
 #include <sched.h>
 #include <unistd.h>
