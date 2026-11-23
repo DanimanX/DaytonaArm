@@ -47,10 +47,13 @@ Measured on retail handhelds with the PortMaster `aarch64` build. The arcade fra
 | **Anbernic RG351M** | Rockchip RK3326 (4× Cortex-A35 @ 1.3 GHz) | ARM Mali-G31 | `libmali.so` `g29p1-12eac0` (ARM Bifrost userspace blob) + `mali_kbase` kernel module | **ROCKNIX** (kernel 7.1.2, sway/Wayland) | **53.4 – 57.5 FPS — full speed** (57.5 = `FrameClock` ceiling) |
 | **Anbernic RG34XX** | Allwinner H700 (4× Cortex-A53, 1.704 GHz observed) | ARM Mali-G31 MP2 | `libmali.so` `r20p0-01rel0` (ARM Bifrost userspace blob) + `mali_kbase` kernel module | **KNULLI** (kernel 4.9.170, `schedutil`) | **57.1 FPS median (54.4 – 57.8)** — full speed ² |
 | **TrimUI Smart Pro** | Allwinner A133P (4× Cortex-A53, 1.8 GHz observed) | Imagination PowerVR GE8300 | `libGLESv2.so` (PowerVR userspace) + `pvrsrvkm` kernel module | **Spruce** (kernel 4.9.191) | **57.1 FPS median (54.3 – 57.8)**, 57.3 with the unpinned runtime — full speed ³ |
+| **Powkiddy RGB30** | Rockchip RK3566 (4× Cortex-A55, 1.992 GHz observed) | ARM Mali-G52 | `libmali.so` `g2p0-01eac0` (ARM Bifrost G52 userspace blob) + `mali_kbase` kernel module | **ArkOS** (kernel 4.19.172) | **57.4 FPS median (56.4 – 57.8)** — full speed ⁴ |
 
 ² The RG34XX reaches its `FrameClock` ceiling (57.524 Hz) with **either** build: 57.09 FPS median with the render loop pinned to Core 0 against 57.12 FPS unpinned across four alternating runs, a 0.03 FPS difference. The same inheritance bug is present there — its `mali-*` and audio threads also report `Cpus_allowed_list=0` — but the Cortex-A53 at 1.704 GHz has enough headroom to hit the ceiling despite it. Unpinning does cut main-thread run-queue wait from ~6.8% to ~2.4%, so the fix is neutral on H700 rather than an improvement, and measurably **not** a regression.
 
 ³ Also already at the ceiling: 57.05 FPS median pinned against 57.27 FPS unpinned, with the worst sampled interval improving from 54.3 to 55.8 FPS. Rendering is fine on PowerVR GE8300 through the same GLES 2.0 path — nothing device-specific is needed. Note that Spruce does not let the launcher write `scaling_governor` (eight `Permission denied` lines in the port log on every run); the game holds full speed anyway.
+
+⁴ Identical either way (57.41 pinned vs 57.41 unpinned) because this SoC has the most headroom measured so far: the whole process uses **61% of one core, about 15% of the machine**, at 1.992 GHz — main thread 29.5%, geometry 7.8%, sound 17.1%, 2D 3.1%, Mali driver 3.5%. This is also the first device where reference audio was measured at full speed and it is nearly clean (0 and 1 underrun in two 20 s runs, resample ratio ≈ 1.00), which confirms the audio shortfall seen elsewhere is a consequence of frame rate and not a fault in the reference backend. On this class of hardware *Audio engine → Reference* is usable.
 
 > **Non-contiguous online CPUs.** Spruce's Powersave mode hot-unplugs cores and can leave `{0,3}` online. Building the affinity mask as CPUs `0..n-1` then names an offline core and `pthread_setaffinity_np` returns `EINVAL`, silently doing nothing. `pin_current_thread_all()` and `pin_current_thread()` now parse `/sys/devices/system/cpu/online` and only ever name CPUs the kernel reports as online.
 
@@ -73,7 +76,7 @@ The RK3326 numbers come from the `--fps` log over real play sessions. Before and
 Compiled for **`aarch64-linux-gnu` / `glibc <= 2.28`** (statically linking `libc++` via Zig, zero `libstdc++.so` dependency, dynamically loading the firmware's hardware-accelerated `libSDL2-2.0.so.0` and OpenGL ES 2.0):
 - **Anbernic XX (Allwinner H700):** RG34XX, RG35XX Plus / H / SP / 2024, RG40XX H / V, RG CubeXX, RG28XX (muOS, Knulli, ROCKNIX, Stock OS)
 - **Rockchip RK3326 (Cortex-A35 @ 1.3 GHz, Mali-G31):** Anbernic RG351P / RG351M / RG351V (ROCKNIX, ArkOS, AmberELEC)
-- **Rockchip RK3566 (Cortex-A55 @ 1.8 GHz):** Powkiddy RGB30 / X55, Anbernic RG353 / RG503, Miyoo Flip
+- **Rockchip RK3566 (Cortex-A55, 1.8–2.0 GHz):** Powkiddy RGB30 / X55, Anbernic RG353 / RG503, Miyoo Flip
 - **Allwinner A133P / TrimUI:** TrimUI Smart Pro, TrimUI Brick
 - **ARM64 SBCs:** Raspberry Pi 4 / 5, Orange Pi Zero 2W / 3 (64-bit Linux)
 
