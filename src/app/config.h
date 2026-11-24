@@ -14,7 +14,11 @@ namespace app {
 struct Config {
     std::string rom_path;
     std::string gpu;          // "" (automatic), vulkan, direct3d12, metal
+#ifdef M2_DYNAMIC_ROMSET
+    std::string renderer = "hardware"; // dynamic Vulkan build defaults to SDL_GPU hardware 3D
+#else
     std::string renderer = "software"; // the 3D: software (CPU, exact) or hardware (SDL_GPU)
+#endif
     bool fullscreen = false;
     bool hide_cursor = false; // no mouse cursor while the game plays; it shows again in the launcher
     // Exclusive fullscreen in this mode ("WxH@Hz", with "*density" when not

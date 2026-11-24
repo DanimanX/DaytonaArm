@@ -40,20 +40,25 @@ Calibrated against real-hardware PS Vita `--gpu-gl --fast-inaccuracy` measuremen
 | **CPU Software Rasterizer (`raster.cpp`, not used)** | ~45 – 80 ms | — | — | — | — | ~12 – 22 FPS *(unplayable)* |
 
 ### Tested Devices (Real Hardware)
-Measured on retail handhelds with the PortMaster `aarch64` build. The arcade frame rate is `57.524 FPS` (100% speed).
+Measured on retail hardware with the `aarch64` builds (`daytona.aarch64` GLES 2.0 on handhelds without Vulkan, `daytona-vulkan.aarch64` SDL3/Vulkan on Vulkan-capable Linux ARM64 devices). The arcade frame rate is `57.524 FPS` (100% speed).
 
-| Device | SoC | GPU | GPU module (GLES driver) | OS / CFW | Tested performance |
+| Device | SoC | GPU | GPU driver | OS / CFW | Tested performance |
 |---|---|---|---|---|---|
-| **Anbernic RG351M** | Rockchip RK3326 (4× Cortex-A35 @ 1.3 GHz) | ARM Mali-G31 | `libmali.so` `g29p1-12eac0` (ARM Bifrost userspace blob) + `mali_kbase` kernel module | **ROCKNIX** (kernel 7.1.2, sway/Wayland) | **53.4 – 57.5 FPS — full speed** (57.5 = `FrameClock` ceiling) |
-| **Anbernic RG34XX** | Allwinner H700 (4× Cortex-A53, 1.704 GHz observed) | ARM Mali-G31 MP2 | `libmali.so` `r20p0-01rel0` (ARM Bifrost userspace blob) + `mali_kbase` kernel module | **KNULLI** (kernel 4.9.170, `schedutil`) | **57.1 FPS median (54.4 – 57.8)** — full speed ² |
-| **TrimUI Smart Pro** | Allwinner A133P (4× Cortex-A53, 1.8 GHz observed) | Imagination PowerVR GE8300 | `libGLESv2.so` (PowerVR userspace) + `pvrsrvkm` kernel module | **Spruce** (kernel 4.9.191) | **57.1 FPS median (54.3 – 57.8)**, 57.3 with the unpinned runtime — full speed ³ |
-| **Powkiddy RGB30** | Rockchip RK3566 (4× Cortex-A55, 1.992 GHz observed) | ARM Mali-G52 | `libmali.so` `g2p0-01eac0` (ARM Bifrost G52 userspace blob) + `mali_kbase` kernel module | **ArkOS** (kernel 4.19.172) | **57.4 FPS median (56.4 – 57.8)** — full speed ⁴ |
+| **Anbernic RG351M** | Rockchip RK3326 (4× Cortex-A35 @ 1.3 GHz) | ARM Mali-G31 | `libmali.so` `g29p1-12eac0` (GLES 2.0) + `mali_kbase` | **ROCKNIX** (kernel 7.1.2, sway/Wayland) | **53.4 – 57.5 FPS — full speed** (57.5 = `FrameClock` ceiling) |
+| **Anbernic RG34XX** | Allwinner H700 (4× Cortex-A53, 1.704 GHz observed) | ARM Mali-G31 MP2 | `libmali.so` `r20p0-01rel0` (GLES 2.0) + `mali_kbase` | **KNULLI** (kernel 4.9.170, `schedutil`) | **57.1 FPS median (54.4 – 57.8)** — full speed ² |
+| **TrimUI Smart Pro** | Allwinner A133P (4× Cortex-A53, 1.8 GHz observed) | Imagination PowerVR GE8300 | `libGLESv2.so` (PowerVR GLES 2.0) + `pvrsrvkm` | **Spruce** (kernel 4.9.191) | **57.1 FPS median (54.3 – 57.8)**, 57.3 with the unpinned runtime — full speed ³ |
+| **Powkiddy RGB30** | Rockchip RK3566 (4× Cortex-A55, 1.992 GHz observed) | ARM Mali-G52 | `libmali.so` `g2p0-01eac0` (GLES 2.0) + `mali_kbase` | **ArkOS** (kernel 4.19.172) | **57.4 FPS median (56.4 – 57.8)** — full speed ⁴ |
+| **OnePlus Pad Pro** | Qualcomm Snapdragon 8 Gen 3 (`qcom,sm8650`: 2× A520 @ 2.27 GHz + 3× A720 @ 3.15 GHz + 2× A720 @ 2.96 GHz + 1× X4 @ 3.05 GHz) | Qualcomm Adreno 750 | **Mesa Turnip 26.3.1** (**Vulkan 1.4.363**, `SDL_GPU` SPIR-V) | **Arch Linux ARM** (kernel 7.3.0, Hyprland/Wayland, 3000×2120) | **57.57 FPS locked at 1× & 4× (1984×1536)** — uncapped **855–1518 FPS (1×)** / **301–376 FPS (4×)** ⁵ |
 
 ² The RG34XX reaches its `FrameClock` ceiling (57.524 Hz) with **either** build: 57.09 FPS median with the render loop pinned to Core 0 against 57.12 FPS unpinned across four alternating runs, a 0.03 FPS difference. The same inheritance bug is present there — its `mali-*` and audio threads also report `Cpus_allowed_list=0` — but the Cortex-A53 at 1.704 GHz has enough headroom to hit the ceiling despite it. Unpinning does cut main-thread run-queue wait from ~6.8% to ~2.4%, so the fix is neutral on H700 rather than an improvement, and measurably **not** a regression.
 
 ³ Also already at the ceiling: 57.05 FPS median pinned against 57.27 FPS unpinned, with the worst sampled interval improving from 54.3 to 55.8 FPS. Rendering is fine on PowerVR GE8300 through the same GLES 2.0 path — nothing device-specific is needed. Note that Spruce does not let the launcher write `scaling_governor` (eight `Permission denied` lines in the port log on every run); the game holds full speed anyway.
 
 ⁴ Identical either way (57.41 pinned vs 57.41 unpinned) because this SoC has the most headroom measured so far: the whole process uses **61% of one core, about 15% of the machine**, at 1.992 GHz — main thread 29.5%, geometry 7.8%, sound 17.1%, 2D 3.1%, Mali driver 3.5%. This is also the first device where reference audio was measured at full speed and it is nearly clean (0 and 1 underrun in two 20 s runs, resample ratio ≈ 1.00), which confirms the audio shortfall seen elsewhere is a consequence of frame rate and not a fault in the reference backend. On this class of hardware *Audio engine → Reference* is usable.
+
+⁵ Measured live on Wayland + PipeWire with the standalone ROM-free Vulkan runtime (`daytona-vulkan.aarch64`, SDL3 `SDL_GPU` Vulkan + SPIR-V, max `GLIBC_2.27`, zero `libstdc++.so.6`) loading `cache/daytona-aarch64.so` and `cache/daytona93-aarch64.so` via `dlopen()`:
+- **Paced gameplay (300 frames, 57.524 Hz target):** Rev A 1× **57.57 FPS** (27.2% of 1 core, 207.7 MiB RSS, Reference audio), Rev A 4× (1984×1536) **57.58 FPS** (26.2% of 1 core, 209.5 MiB RSS, Reference audio), Deluxe '93 4× **57.46 FPS** (21.3% of 1 core, 209.5 MiB RSS, Native audio: 246 callbacks, 0 overflows/faults).
+- **Uncapped GPU benchmark (`m2gpushot --bench`, 240 frames, Vulkan Turnip Adreno 750):** Deluxe '93 **855 FPS** at 1× (`game 0.47 ms`, `CPU 0.18 ms`, `GPU 0.52 ms`) and **301 FPS** at 4× (`game 0.91 ms`, `CPU 0.31 ms`, `GPU 2.08 ms`); Revision A **1518 FPS** at 1× (`game 0.45 ms`, `CPU 0.12 ms`, `GPU 0.09 ms`) and **376 FPS** at 4× (`game 1.32 ms`, `CPU 0.20 ms`, `GPU 1.13 ms`).
 
 > **Non-contiguous online CPUs.** Spruce's Powersave mode hot-unplugs cores and can leave `{0,3}` online. Building the affinity mask as CPUs `0..n-1` then names an offline core and `pthread_setaffinity_np` returns `EINVAL`, silently doing nothing. `pin_current_thread_all()` and `pin_current_thread()` now parse `/sys/devices/system/cpu/online` and only ever name CPUs the kernel reports as online.
 
@@ -78,7 +83,13 @@ Compiled for **`aarch64-linux-gnu` / `glibc <= 2.28`** (statically linking `libc
 - **Rockchip RK3326 (Cortex-A35 @ 1.3 GHz, Mali-G31):** Anbernic RG351P / RG351M / RG351V (ROCKNIX, ArkOS, AmberELEC)
 - **Rockchip RK3566 (Cortex-A55, 1.8–2.0 GHz):** Powkiddy RGB30 / X55, Anbernic RG353 / RG503, Miyoo Flip
 - **Allwinner A133P / TrimUI:** TrimUI Smart Pro, TrimUI Brick
-- **ARM64 SBCs:** Raspberry Pi 4 / 5, Orange Pi Zero 2W / 3 (64-bit Linux)
+- **ARM64 SBCs & Linux Tablets (GLES 2.0 or Vulkan):** OnePlus Pad Pro (Snapdragon 8 Gen 3 / Adreno 750 Turnip Vulkan), Raspberry Pi 4 / 5, Orange Pi Zero 2W / 3 (64-bit Linux)
+
+### Standalone Vulkan Binary (`DaytonaArm-Vulkan-aarch64.zip`)
+For ARM64 Linux devices with a working Vulkan driver (e.g. **OnePlus Pad Pro / Adreno 750 Turnip**, Mali PanVK, Raspberry Pi V3DV), releases also publish a separate 100% ROM-free **Vulkan** runtime built with `tools/build-arm64-vulkan.sh`:
+- **`daytona-vulkan.aarch64`:** Static SDL3 3.4.16 (`SDL_GPU` Vulkan + SPIR-V shaders, Wayland/X11 and PipeWire/PulseAudio/ALSA loaded dynamically via `dlopen()`), Dear ImGui `SDL_GPU3`, 1×–4× internal resolution supersampling, widescreen, max `GLIBC_2.27`, zero `libstdc++.so.6` dependency.
+- **Same `.so` cache modules:** Uses the exact same `cache/daytona-aarch64.so` and `cache/daytona93-aarch64.so` modules generated by `tools/build-arm64-cache.sh` (works on both `x86_64` and `aarch64` Linux hosts).
+- **Quick launch:** Extract `DaytonaArm-Vulkan-aarch64.zip`, place your ROM zip(s) in `daytonaarm-vulkan/roms/` and your `.so` module(s) in `daytonaarm-vulkan/cache/`, and run `./Daytona\ USA\ Vulkan.sh` (or `./daytonaarm-vulkan/daytona-vulkan.aarch64 --data-dir ./daytonaarm-vulkan --gpu vulkan`).
 
 ---
 

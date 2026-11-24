@@ -87,7 +87,11 @@ void Launcher::check_rom() {
     rom_ok_ = false;
     other_set_.clear(), other_game_.clear(), other_rom_.clear();
     if (cfg_.rom_path.empty()) {
+#ifdef M2_DYNAMIC_ROMSET
+        rom_message_ = "Choose your daytona or daytona93 ROM set (.zip or .7z).";
+#else
         rom_message_ = "Choose your " M2_ROMSET " ROM set (.zip or .7z).";
+#endif
         return;
     }
     try {
@@ -95,6 +99,16 @@ void Launcher::check_rom() {
         // path. Stage it through SDL's Android reader before the plain-file
         // archive code verifies it. Invalid imports never replace a good copy.
         RomFile selected(cfg_.rom_path);
+#ifdef M2_DYNAMIC_ROMSET
+        // Dynamic-module runtime supports both daytona and daytona93 in one binary:
+        // switch the active ROM set automatically when the archive holds a valid set.
+        const auto dyn_sets = rt::rom_sets_in(selected.path());
+        if (!dyn_sets.empty()) {
+            const std::string cur = rt::rom_set_name();
+            if (std::find(dyn_sets.begin(), dyn_sets.end(), cur) == dyn_sets.end())
+                rt::set_rom_set_name(dyn_sets.front().c_str());
+        }
+#endif
         checks_ = rt::check_rom_set(selected.path());
         int good = 0;
         for (const auto &c : checks_) good += c.ok;
@@ -115,7 +129,8 @@ void Launcher::check_rom() {
         rom_ok_ = verified;
         rom_message_ = rom_ok_ ? "All " + std::to_string(good) + " files verified."
                                : std::to_string(int(checks_.size()) - good) + " of " + std::to_string(checks_.size()) +
-                                     " files missing or wrong: this is not the " M2_ROMSET " set.";
+                                     " files missing or wrong: this is not the " + std::string(rt::rom_set_name()) + " set.";
+#ifndef M2_DYNAMIC_ROMSET
         if (!verified) { // the other set: its own game, if it is built beside this one
             const auto sets = rt::rom_sets_in(selected.path());
             if (!sets.empty() && sets.front() != M2_ROMSET) {
@@ -134,6 +149,7 @@ void Launcher::check_rom() {
 #endif
             }
         }
+#endif
     } catch (const std::exception &e) {
         rom_message_ = e.what();
     }

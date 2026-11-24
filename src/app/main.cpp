@@ -34,6 +34,10 @@
 #ifdef M2_MOBILE
 #include "app/touch_overlay.h"
 #endif
+#ifdef M2_DYNAMIC_ROMSET
+#include "module_bridge.h"
+#include <filesystem>
+#endif
 
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
@@ -194,6 +198,16 @@ void open_log() {
 }
 
 int main(int argc, char **argv) {
+#ifdef M2_DYNAMIC_ROMSET
+    std::string data_dir;
+    std::string cli_romset;
+    for (int i = 1; i + 1 < argc; i++) {
+        if (!std::strcmp(argv[i], "--data-dir")) data_dir = argv[++i];
+        else if (!std::strcmp(argv[i], "--romset")) cli_romset = argv[++i];
+    }
+    if (cli_romset == "daytona" || cli_romset == "daytona93")
+        rt::set_rom_set_name(cli_romset.c_str());
+#endif
     for (int i = 1; i + 1 < argc; i++) // before anything reads or writes the data folder
         if (!std::strcmp(argv[i], "--profile")) app::Config::profile = argv[i + 1];
     open_log();
@@ -204,6 +218,11 @@ int main(int argc, char **argv) {
     for (int i = 1; i < argc; i++) {
         if (!std::strcmp(argv[i], "--rom") && i + 1 < argc) cfg.rom_path = argv[++i];
         else if (!std::strcmp(argv[i], "--gpu") && i + 1 < argc) cfg.gpu = argv[++i];
+        else if (!std::strcmp(argv[i], "--renderer") && i + 1 < argc) {
+            const char *r = argv[++i];
+            if (!std::strcmp(r, "hardware") || !std::strcmp(r, "software")) cfg.renderer = r;
+        }
+        else if (!std::strcmp(argv[i], "--scale") && i + 1 < argc) cfg.supersampling = std::clamp(std::atoi(argv[++i]), 1, 4);
         else if (!std::strcmp(argv[i], "--audio")) {
             if (i + 1 == argc || (std::strcmp(argv[i + 1], "native") && std::strcmp(argv[i + 1], "reference"))) {
                 std::fprintf(stderr, "daytona: --audio expects native or reference\n");
@@ -215,7 +234,46 @@ int main(int argc, char **argv) {
         else if (!std::strcmp(argv[i], "--fullscreen")) cfg.fullscreen = true;
         else if (!std::strcmp(argv[i], "--autostart")) autostart = true;
         else if (!std::strcmp(argv[i], "--profile") && i + 1 < argc) ++i; // read above
+#ifdef M2_DYNAMIC_ROMSET
+        else if ((!std::strcmp(argv[i], "--data-dir") || !std::strcmp(argv[i], "--romset")) && i + 1 < argc) ++i;
+#endif
     }
+#ifdef M2_DYNAMIC_ROMSET
+    auto dynamic_search_dirs = [&](const std::string &rom_path) {
+        std::vector<std::string> dirs;
+        auto push_dir = [&](std::string d) {
+            while (d.size() > 1 && d.back() == '/') d.pop_back();
+            if (!d.empty() && std::find(dirs.begin(), dirs.end(), d) == dirs.end()) dirs.push_back(std::move(d));
+        };
+        if (!data_dir.empty()) push_dir(data_dir);
+        if (!rom_path.empty()) {
+            std::error_code ec;
+            auto p = std::filesystem::path(rom_path).parent_path();
+            if (!p.empty()) {
+                push_dir(p.string());
+                if (p.has_parent_path()) push_dir(p.parent_path().string());
+            }
+        }
+        if (const char *base = SDL_GetBasePath()) push_dir(base);
+        push_dir(".");
+        return dirs;
+    };
+    if (cfg.rom_path.empty()) {
+        const std::string first = !cli_romset.empty() ? cli_romset : std::string(rt::rom_set_name());
+        const std::string second = (first == "daytona") ? "daytona93" : "daytona";
+        for (const std::string &set : {first, second}) {
+            for (const std::string &dir : dynamic_search_dirs("")) {
+                const std::string found = arm64::ModuleLoader::find_rom(dir, set);
+                if (!found.empty()) {
+                    cfg.rom_path = found;
+                    rt::set_rom_set_name(set.c_str());
+                    break;
+                }
+            }
+            if (!cfg.rom_path.empty()) break;
+        }
+    }
+#endif
 
     // the name graphics overlays and drivers see (patches/sdl3: Vulkan's application name)
     SDL_SetAppMetadata("Daytona USA", nullptr, "daytona-recomp");
@@ -312,8 +370,11 @@ int main(int argc, char **argv) {
     app::Launcher launcher(cfg, window);
     app::ForceFeedback ffb; // the drive board on the steering device
     std::unique_ptr<app::TcpLink> link; // link play (declared first: outlives the game, which holds it)
+#ifdef M2_DYNAMIC_ROMSET
+    arm64::ModuleLoader module_loader; // declared before game so dlclose runs after GameLoop destructs
+#endif
     std::unique_ptr<rt::GameLoop> game;
-    const std::string eeprom_path = pref_file("ioboard_eeprom.bin"), backup_path = pref_file("backup_ram.bin");
+    std::string eeprom_path = pref_file("ioboard_eeprom.bin"), backup_path = pref_file("backup_ram.bin");
     auto save_nv = [&] {
         if (!game) return;
         save_file(eeprom_path, game->board().io().eeprom);
@@ -330,6 +391,27 @@ int main(int argc, char **argv) {
         native_fault = false;
         native_active = cfg.native_audio;
         try {
+#ifdef M2_DYNAMIC_ROMSET
+            const auto sets = rt::rom_sets_in(cfg.rom_path);
+            std::string target_set = rt::rom_set_name();
+            if (!sets.empty() && std::find(sets.begin(), sets.end(), target_set) == sets.end())
+                target_set = sets.front();
+            if (!module_loader.loaded() || module_loader.romset() != target_set) {
+                std::string so_path;
+                for (const std::string &dir : dynamic_search_dirs(cfg.rom_path)) {
+                    so_path = arm64::ModuleLoader::find_module(dir, target_set);
+                    if (!so_path.empty()) break;
+                }
+                std::string mod_err;
+                if (!module_loader.load(so_path, target_set, mod_err))
+                    throw std::runtime_error(mod_err);
+                std::printf("daytona: loaded game module %s (%s)\n", module_loader.path().c_str(), target_set.c_str());
+            } else {
+                rt::set_rom_set_name(target_set.c_str());
+            }
+            eeprom_path = pref_file("ioboard_eeprom.bin");
+            backup_path = pref_file("backup_ram.bin");
+#endif
             auto images = rt::import_rom_set(cfg.rom_path);
             if (native_active) {
                 if (!audio_initialized) throw std::runtime_error("Native audio needs an available audio device.");
@@ -420,6 +502,7 @@ int main(int argc, char **argv) {
     SDL_Rect touch_area{};
     int touch_width = 0, touch_height = 0;
 #endif
+    uint64_t run_start_ns = 0, run_end_ns = 0;
     while (running) {
 #ifdef M2_MOBILE
         int tw = 0, th = 0;
@@ -541,7 +624,9 @@ int main(int argc, char **argv) {
                 rt::Inputs inputs = cfg.controls.sample(SDL_GetKeyboardState(nullptr), devices);
                 if (cfg.hold_test != test_hold.armed()) cfg.hold_test ? test_hold.arm() : test_hold.cancel();
                 if (test_hold.apply(game->frames(), inputs.in0)) cfg.hold_test = false; // held: the box clears
+                if (!run_start_ns) run_start_ns = SDL_GetTicksNS();
                 game->run_frame(inputs);
+                run_end_ns = SDL_GetTicksNS();
 #ifdef M2_MOBILE
                 touch.consumed();
                 cfg.controls.touch = touch.values;
@@ -707,7 +792,15 @@ int main(int argc, char **argv) {
 
     save_nv();
     cfg.save();
-    if (game) std::printf("daytona: %llu frames\n", (unsigned long long)game->frames());
+    if (game) {
+        if (run_start_ns && run_end_ns > run_start_ns && game->frames() > 1) {
+            const double sec = double(run_end_ns - run_start_ns) / 1e9;
+            std::printf("daytona: %llu frames in %.2f s (%.2f frames/s)\n", (unsigned long long)game->frames(), sec,
+                        double(game->frames() - 1) / sec);
+        } else {
+            std::printf("daytona: %llu frames\n", (unsigned long long)game->frames());
+        }
+    }
     if (native_audio.available()) {
         native_audio.pause();
         const auto stats = native_audio.stats();

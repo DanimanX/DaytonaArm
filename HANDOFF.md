@@ -2064,3 +2064,40 @@ M1 native (`tools/m2recomp`, `tools/m2native`, `src/runtime/lockstep`):
   harvest patch now logs IAC targets and the seeds include it.
 - Mutation check: the generator's addo template off by one when src1 == 1
   diverges at epoch 3.
+
+## ARM64 Vulkan Runtime & OnePlus Pad Pro (SM8650 / Turnip Adreno 750)
+
+- Added a standalone ROM-free Vulkan runtime (`daytona-vulkan.aarch64`, packaged as
+  `DaytonaArm-Vulkan-aarch64.zip` via `tools/build-arm64-vulkan.sh` and CMake option
+  `M2_DYNAMIC_VULKAN=ON`). It links SDL3 3.4.16 statically with Zig 0.17.0
+  (`aarch64-linux-gnu.2.28`, max `GLIBC_2.27`, zero `libstdc++.so.6`), dynamically
+  loading `libvulkan.so.1`, Wayland, X11, PipeWire, PulseAudio and ALSA at runtime.
+- Shares the exact `arm64::DaytonaModuleApi` ABI (`module_fast_flags()` including
+  `M2_VITA_RENDER_OPT=1`) with `daytona.aarch64` (GLES 2.0), so the same
+  `cache/daytona-aarch64.so` and `cache/daytona93-aarch64.so` modules run on both
+  runtimes without rebuilding.
+- Findings from bringing up on OnePlus Pad Pro (`oneplus,caihong`, Qualcomm SM8650,
+  Adreno 750, Mesa Turnip 26.3.1, Vulkan 1.4.363, Arch Linux ARM kernel 7.3.0):
+  - `src/runtime/video.cpp` gated `if (external_3d_ && desktop_)` behind
+    `#ifndef M2_VITA_RENDER_OPT`, which prevented `gpu_tile_words_` / `gpu_pens_`
+    from being populated when building desktop `SDL_GPU` with `M2_VITA_RENDER_OPT=1`.
+    Removed that `#ifndef` guard; GLES 2.0 and Vita pass `desktop = false` and are
+    unaffected.
+  - `tools/build-arm64-cache.sh` compiled host recompiler tools with Zig's default
+    native CPU target, which caused `SIGILL` on SM8650's heterogeneous big.LITTLE
+    topology (Cortex-A520 / A720 / X4). Host tools now compile with `-mcpu=baseline`.
+  - `tools/build-arm64.sh` and `tools/build-arm64-vulkan.sh` now detect `uname -m`
+    (`x86_64` or `aarch64`) for Zig 0.17.0 downloads and fall back `TMPDIR` to `/tmp`
+    if the inherited `TMPDIR` directory does not exist.
+  - `Config::renderer` defaults to `"hardware"` under `M2_DYNAMIC_ROMSET` so the
+    Vulkan binary starts with GPU 3D rendering active out of the box (desktop builds
+    keep `"software"` as default).
+- Verified on OnePlus Pad Pro (Wayland + PipeWire + Mesa Turnip 26.3.1):
+  - `ctest` host suite: 19/19 executed passed in 2.36 s (2 Lua tests skipped).
+  - Live `daytona-vulkan.aarch64` with `.so` modules (300 frames): Rev A 1x 57.57 FPS
+    (27.2% of 1 core, 207.7 MiB RSS, reference audio), Rev A 4x 57.58 FPS (26.2% of 1
+    core, 209.5 MiB RSS, reference audio), Deluxe '93 4x 57.46 FPS (21.3% of 1 core,
+    209.5 MiB RSS, native audio: 246 callbacks, 0 overflows/faults).
+  - Uncapped `m2gpushot --bench` (240 frames): Deluxe '93 855 FPS (1x) / 301 FPS (4x);
+    Rev A 1518 FPS (1x) / 376 FPS (4x).
+

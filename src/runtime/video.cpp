@@ -697,7 +697,6 @@ void Video::screen_update(const std::vector<GeoPoly> &polys, int windows, const 
         system24_source_dirty_ = false;
     }
     profile_.tile_cache = ticks() - before;
-#ifndef M2_VITA_RENDER_OPT
     if (external_3d_ && desktop_) {
         // Desktop hardware renderer: it draws the tilemap layers from the
         // pixmaps, with this frame's registers and pens (the game may write
@@ -723,7 +722,6 @@ void Video::screen_update(const std::vector<GeoPoly> &polys, int windows, const 
         }
         return;
     }
-#endif
 #ifndef M2_DC_MEMORY
     // (Not the Dreamcast: its PVR renderer uploads the two layers this
     // function composes below, the screen and sys24.)

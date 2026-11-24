@@ -17,6 +17,9 @@
 # Writes cache/daytona-aarch64.so and/or cache/daytona93-aarch64.so into <DATA_DIR>/cache/.
 set -euo pipefail
 cd "$(dirname "$0")/.."
+if [ -n "${TMPDIR:-}" ] && [ ! -d "$TMPDIR" ]; then
+    export TMPDIR="/tmp"
+fi
 
 DATA_DIR="${1:-$PWD}"
 TARGET_CPU="${2:-cortex_a53}"
@@ -62,7 +65,7 @@ PYEOF
         xargs -P "$JOBS" -I{} sh -c '
             src="$1"; out="$2/$(basename "$src" .c).o"
             [ -f "$out" ] && [ "$out" -nt "$src" ] && exit 0
-            exec "$3" cc -std=c11 -O2 -w \
+            exec "$3" cc -mcpu=baseline -std=c11 -O2 -w \
                 -DSOFTFLOAT_FAST_INT64 -DLITTLEENDIAN=1 -DTHREAD_LOCAL=_Thread_local \
                 -DSOFTFLOAT_ROUND_ODD -DINLINE_LEVEL=5 -DSOFTFLOAT_FAST_DIV32TO16 -DSOFTFLOAT_FAST_DIV64TO32 \
                 -Iextern/softfloat/source/include -Iextern/softfloat/build/Linux-x86_64-GCC -Iextern/softfloat/source/8086-SSE \
@@ -71,7 +74,7 @@ PYEOF
         "$ZIG_BIN" ar rcs "$HTOOLS/libsoftfloat.a" "$HTOOLS/sf"/*.o
     fi
 
-    local hcxx="-std=c++20 -O2 -fno-fast-math -ffp-contract=off -w -DTHREAD_LOCAL=__thread \
+    local hcxx="-mcpu=baseline -std=c++20 -O2 -fno-fast-math -ffp-contract=off -w -DTHREAD_LOCAL=__thread \
         -DSOFTFLOAT_FAST_INT64 -DLITTLEENDIAN=1 -Isrc -Iextern/softfloat/source/include -Iextern/ymfm/src"
 
     # Build shared i960 + m68k + zip/archive objects
@@ -207,10 +210,11 @@ PYEOF
         echo "$EXPORTS" >&2
     fi
 
-    # Cross-check every undefined non-libc symbol in .so against daytona.aarch64 exports!
-    if [ -x "$BDIR/daytona.aarch64" ]; then
-        python3 - "$BDIR/daytona.aarch64" "$OUT_SO" <<'PYEOF'
-import subprocess, sys
+    # Cross-check every undefined non-libc symbol in .so against built ARM64 runtimes!
+    for HOST_BIN in "$BDIR/daytona.aarch64" "$PWD/build-arm64-vulkan/daytona-vulkan.aarch64"; do
+        [ -x "$HOST_BIN" ] || continue
+        python3 - "$HOST_BIN" "$OUT_SO" <<'PYEOF'
+import os, subprocess, sys
 host_bin, mod_so = sys.argv[1], sys.argv[2]
 host_syms = set()
 for line in subprocess.check_output(["nm", "-D", "--defined-only", host_bin], text=True).splitlines():
@@ -228,13 +232,13 @@ for line in subprocess.check_output(["nm", "-D", "-u", mod_so], text=True).split
         if base not in host_syms:
             missing.append(sym)
 if missing:
-    print("ERROR: Unresolved symbols in .so not exported by daytona.aarch64:", file=sys.stderr)
+    print(f"ERROR: Unresolved symbols in .so not exported by {os.path.basename(host_bin)}:", file=sys.stderr)
     for m in missing:
         print("  ", m, file=sys.stderr)
     sys.exit(1)
-print("  OK: 100% of dynamic module symbols resolve cleanly against daytona.aarch64!")
+print(f"  OK: 100% of dynamic module symbols resolve cleanly against {os.path.basename(host_bin)}!")
 PYEOF
-    fi
+    done
 
     echo "  OK: $OUT_SO ($(du -h "$OUT_SO" | cut -f1), max GLIBC_${MAX_GLIBC:-none})"
     BUILT=$((BUILT + 1))

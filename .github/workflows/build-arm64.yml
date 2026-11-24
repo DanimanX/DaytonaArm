@@ -1,7 +1,8 @@
-# Automatically builds and verifies the ROM-free AArch64 / OpenGL ES 2.0
-# PortMaster package for DaytonaArm (Anbernic RG34XX / Allwinner H700 and
-# compatible ARM64 Linux handhelds), verifies dynamic .so ABI symbol export
-# using a synthetic ROM-free mock module, and publishes GitHub Releases on tags.
+# Automatically builds and verifies both ROM-free AArch64 packages of DaytonaArm:
+#   1. DaytonaArm-PortMaster-aarch64.zip (OpenGL ES 2.0 / SDL2 for H700, RK3326, RK3566, A133P)
+#   2. DaytonaArm-Vulkan-aarch64.zip     (SDL3 SDL_GPU Vulkan / SPIR-V for Turnip/PanVK/V3DV devices)
+# Both verify dynamic .so ABI symbol export using a synthetic ROM-free mock module,
+# and publish GitHub Releases on v* tags.
 #
 # Zero copyrighted ROMs or ROM-derived game code ever enter the build or artifacts.
 name: Build ARM64 PortMaster
@@ -15,7 +16,7 @@ on:
   workflow_dispatch:
     inputs:
       target_cpu:
-        description: 'Target ARM64 CPU (cortex_a53 for RG34XX/H700, cortex_a55 for RK3566, generic)'
+        description: 'Target ARM64 CPU for GLES build (cortex_a53 for RG34XX/H700, cortex_a55 for RK3566, generic)'
         required: false
         default: 'cortex_a53'
 
@@ -43,9 +44,9 @@ jobs:
             deps
             extern
             !deps/zig-cache
-          key: daytonaarm-deps-${{ hashFiles('tools/build-arm64.sh') }}
+          key: daytonaarm-deps-gles-${{ hashFiles('tools/build-arm64.sh') }}
 
-      - name: Cross-compile AArch64 runtime and assemble PortMaster package
+      - name: Cross-compile AArch64 GLES 2.0 runtime and assemble PortMaster package
         env:
           TARGET_CPU: ${{ github.event.inputs.target_cpu || 'cortex_a53' }}
         run: |
@@ -89,7 +90,7 @@ jobs:
           printf '%s\n' "$SO_SYMS" | grep -q "daytona_module_api_v1"
           echo "Mock AArch64 .so ABI & export verification PASSED"
 
-      - name: Upload PortMaster artifact
+      - name: Upload PortMaster (GLES 2.0) artifact
         uses: actions/upload-artifact@v4
         with:
           name: DaytonaArm-PortMaster-aarch64
@@ -97,31 +98,124 @@ jobs:
             dist/DaytonaArm-PortMaster-aarch64.zip
             dist/DaytonaArm-PortMaster-aarch64.zip.sha256
 
+  build-arm64-vulkan:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 30
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install ARM64 Vulkan build headers
+        run: |
+          sudo apt-get -o Acquire::Retries=3 update -q
+          sudo apt-get -o Acquire::Retries=3 install -qy --no-install-recommends \
+            build-essential cmake ninja-build pkg-config python3 curl git tar xz-utils zip file binutils \
+            libasound2-dev libpulse-dev libpipewire-0.3-dev \
+            libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxfixes-dev libxi-dev libxss-dev libxtst-dev \
+            libxkbcommon-dev libwayland-dev libdecor-0-dev libdrm-dev libgbm-dev
+
+      - name: Cache Vulkan build dependencies (Zig, SoftFloat, SDL3, ymfm, LZMA, ImGui)
+        uses: actions/cache@v4
+        with:
+          path: |
+            deps
+            extern
+            !deps/zig-cache
+          key: daytonaarm-deps-vulkan-${{ hashFiles('tools/build-arm64-vulkan.sh') }}
+
+      - name: Build AArch64 Vulkan runtime and assemble standalone Vulkan package
+        run: |
+          chmod +x tools/build-arm64-vulkan.sh portmaster/*.sh
+          tools/build-arm64-vulkan.sh
+          ls -lh dist/
+
+      - name: Verify dynamic .so ABI compatibility against daytona-vulkan.aarch64
+        run: |
+          cat > build-arm64-vulkan/ci_mock_mod.cpp <<'EOF'
+          #define M2_ROMSET "daytona"
+          #include "module_abi.h"
+          namespace gen {
+          bool has_code(uint32_t) { return false; }
+          void run(Env &e) { e.c.do_ret(); (void)e.ls.check(0); }
+          uint64_t native_instructions() { return 0; }
+          }
+          namespace rt::tgpgen {
+          const uint32_t program_crc32 = 0xD6D611DDu;
+          const uint32_t program_words = 2024u;
+          void run(Tgp &t, uint64_t) { (void)t.io_r(0); }
+          }
+          namespace sndgen {
+          bool has_code(uint32_t) { return false; }
+          void run(Env &e) { e.c.w16(0, 0); }
+          uint64_t native_instructions() { return 0; }
+          }
+          #include "module_export.cpp"
+          EOF
+          deps/zig-linux/zig c++ -target aarch64-linux-gnu.2.28 -mcpu=cortex_a53 \
+            -std=c++20 -O2 -fPIC -fno-fast-math -ffp-contract=off \
+            -Iplatform/arm64/src -Iplatform/arm64 -Isrc -Iextern/softfloat/source/include \
+            -DSOFTFLOAT_FAST_INT64 -DLITTLEENDIAN=1 -DTHREAD_LOCAL=__thread -DM2_DYNAMIC_ROMSET=1 \
+            -DM2_FAST_GEN=1 -DM2_FAST_BUS=1 -DM2_FAST_TGP=1 -DM2_FAST_CPU=1 -DM2_FAST_GEO=1 -DM2_VITA_RENDER_OPT=1 \
+            -shared -Wl,-Bsymbolic -Wl,--version-script=platform/arm64/module_export.ver -Wl,--allow-shlib-undefined \
+            build-arm64-vulkan/ci_mock_mod.cpp -o build-arm64-vulkan/ci_mock_mod.so
+          python3 - build-arm64-vulkan/daytona-vulkan.aarch64 build-arm64-vulkan/ci_mock_mod.so <<'PYEOF'
+          import subprocess, sys
+          host_bin, mod_so = sys.argv[1], sys.argv[2]
+          host_syms = {p[2].split("@")[0] for line in subprocess.check_output(["nm", "-D", "--defined-only", host_bin], text=True).splitlines() for p in [line.split()] if len(p) >= 3}
+          missing = [p[-1] for line in subprocess.check_output(["nm", "-D", "-u", mod_so], text=True).splitlines() for p in [line.split()] if len(p) >= 2 and "@GLIBC_" not in p[-1] and not p[-1].startswith(("__cxa_finalize", "_ITM_", "__gmon_start__")) and p[-1].split("@")[0] not in host_syms]
+          assert not missing, f"Unresolved symbols: {missing}"
+          print("Mock AArch64 .so ABI & symbol parity against daytona-vulkan.aarch64 PASSED")
+          PYEOF
+
+      - name: Upload Vulkan artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: DaytonaArm-Vulkan-aarch64
+          path: |
+            dist/DaytonaArm-Vulkan-aarch64.zip
+            dist/DaytonaArm-Vulkan-aarch64.zip.sha256
+
+  publish-release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [build-arm64, build-arm64-vulkan]
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Download PortMaster (GLES 2.0) artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: DaytonaArm-PortMaster-aarch64
+          path: dist
+
+      - name: Download Vulkan artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: DaytonaArm-Vulkan-aarch64
+          path: dist
+
       - name: Publish GitHub Release
-        if: startsWith(github.ref, 'refs/tags/v')
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
         run: |
-          FILES="dist/DaytonaArm-PortMaster-aarch64.zip dist/DaytonaArm-PortMaster-aarch64.zip.sha256"
+          FILES="dist/DaytonaArm-PortMaster-aarch64.zip dist/DaytonaArm-PortMaster-aarch64.zip.sha256 dist/DaytonaArm-Vulkan-aarch64.zip dist/DaytonaArm-Vulkan-aarch64.zip.sha256"
           cat > dist/release-notes.md <<'EOF'
-          Automated ROM-free AArch64 / OpenGL ES 2.0 / NEON PortMaster build of **DaytonaArm** tuned for Anbernic RG34XX (Allwinner H700) and compatible ARM64 Linux handhelds.
+          Automated ROM-free AArch64 builds of **DaytonaArm** (Sega Model 2 Daytona USA static recompilation).
 
-          ### Contents (Zero ROMs / Zero Game Code)
-          - `Daytona USA.sh`, `Daytona USA 93.sh`, `Daytona USA Rev A.sh` (PortMaster launchers with `performance` CPU governor)
-          - `daytonaarm/daytona.aarch64` (ARM64 Cortex-A53, 4-core pipeline, OpenGL ES 2.0, ARM64 NEON, max `GLIBC_2.17`)
-          - `daytonaarm/gamecontrollerdb.txt` (includes Anbernic RG34XX mapping), PortMaster metadata, and licences
+          ### Packages (Zero ROMs / Zero Game Code)
+          - **`DaytonaArm-PortMaster-aarch64.zip`** — OpenGL ES 2.0 / SDL2 PortMaster runtime (`daytona.aarch64`, max `GLIBC_2.27`) tuned for Anbernic RG34XX (Allwinner H700), RK3326 (RG351M), RK3566 (RGB30), Allwinner A133P (TrimUI Smart Pro) and compatible handhelds.
+          - **`DaytonaArm-Vulkan-aarch64.zip`** — Standalone Vulkan runtime (`daytona-vulkan.aarch64`, static SDL3 `SDL_GPU` Vulkan + SPIR-V, Wayland/X11, 1×–4× supersampling, max `GLIBC_2.27`) verified on OnePlus Pad Pro (Snapdragon 8 Gen 3 / Adreno 750 Mesa Turnip).
 
           ### Quick Setup (BYOD)
-          1. Extract `DaytonaArm-PortMaster-aarch64.zip` into your handheld's `ports/` folder.
-          2. Copy your own legal MAME `daytona.zip` (Revision A, 1994) and/or `daytona93.zip` (Deluxe '93) into `ports/daytonaarm/roms/`.
-          3. Pre-build the `-O2` Cortex-A53 `.so` cache module(s) on your PC with `tools/build-arm64-cache.sh` and copy `cache/daytona*-aarch64.so` into `ports/daytonaarm/cache/`.
+          Both binaries share the exact same `.so` game modules:
+          1. Extract the package for your device (GLES 2.0 or Vulkan).
+          2. Copy your own legal MAME `daytona.zip` (Revision A, 1994) and/or `daytona93.zip` (Deluxe '93) into `roms/`.
+          3. Pre-build the `-O2` `.so` cache module(s) with `tools/build-arm64-cache.sh` (works on both `x86_64` and `aarch64` Linux) and copy `cache/daytona*-aarch64.so` into `cache/`.
           EOF
           sed -i 's/^          //' dist/release-notes.md
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" $FILES --clobber
           else
             gh release create "$TAG" $FILES \
-              --title "DaytonaArm $TAG (ARM64 / Anbernic RG34XX PortMaster)" \
+              --title "DaytonaArm $TAG (ARM64 GLES 2.0 + Vulkan)" \
               --notes-file dist/release-notes.md
           fi

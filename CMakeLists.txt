@@ -96,6 +96,7 @@ if(NOT M2_ROMSET MATCHES "^(daytona93|daytona)$")
     message(FATAL_ERROR "M2_ROMSET must be daytona93 or daytona, not ${M2_ROMSET}")
 endif()
 
+option(M2_DYNAMIC_VULKAN "Build ROM-free SDL3/Vulkan runtime loading dynamic .so game modules" OFF)
 add_library(runtime STATIC
     src/runtime/cpu.cpp
     src/runtime/tgp.cpp
@@ -121,6 +122,11 @@ add_library(runtime STATIC
 )
 target_include_directories(runtime PUBLIC src)
 target_compile_definitions(runtime PUBLIC M2_ROMSET="${M2_ROMSET}")
+if(M2_DYNAMIC_VULKAN)
+    target_compile_definitions(runtime PUBLIC
+        M2_DYNAMIC_ROMSET=1
+        M2_FAST_GEN=1 M2_FAST_BUS=1 M2_FAST_TGP=1 M2_FAST_CPU=1 M2_FAST_GEO=1 M2_VITA_RENDER_OPT=1)
+endif()
 # 7z ROM sets: the 7-Zip LZMA SDK's decoder (public-domain files only),
 # fetched by scripts/setup.py into extern/lzma.
 set(LZMA_DIR ${CMAKE_SOURCE_DIR}/extern/lzma/C)
@@ -236,6 +242,20 @@ if(EXISTS ${CMAKE_SOURCE_DIR}/extern/sdl3/CMakeLists.txt)
     endif()
     if(M2_MOBILE)
         target_compile_definitions(daytona_app PRIVATE M2_MOBILE=1)
+    endif()
+    if(M2_DYNAMIC_VULKAN)
+        target_include_directories(daytona_app PRIVATE platform/arm64)
+        add_executable(daytona_vulkan $<TARGET_OBJECTS:daytona_app> platform/arm64/module_bridge.cpp)
+        target_include_directories(daytona_vulkan PRIVATE platform/arm64)
+        if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(aarch64|arm64|ARM64)$")
+            set_target_properties(daytona_vulkan PROPERTIES OUTPUT_NAME daytona-vulkan.aarch64)
+        else()
+            set_target_properties(daytona_vulkan PROPERTIES OUTPUT_NAME daytona-vulkan)
+        endif()
+        target_link_options(daytona_vulkan PRIVATE -rdynamic)
+        target_link_libraries(daytona_vulkan PRIVATE
+            -Wl,--whole-archive runtime i960 softfloat -Wl,--no-whole-archive
+            imgui gpurender ${M2_SDL_TARGET} ${CMAKE_DL_LIBS})
     endif()
 endif()
 
