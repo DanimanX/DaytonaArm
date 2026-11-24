@@ -140,9 +140,17 @@ fi
 # SDL3 dynamically loads libvulkan.so.1, Wayland, X11, KMSDRM and audio backends
 # at runtime via dlopen() (SDL_DEPS_SHARED=ON); host headers in /usr/include are
 # sufficient for cross-compilation without linking host target libraries.
+#
+# CMAKE_LIBRARY_ARCHITECTURE is mandatory here: the compiler is a Zig wrapper, so
+# CMake cannot infer the multiarch triplet from its implicit link directories.
+# Without it find_library() never looks in /usr/lib/aarch64-linux-gnu, which is
+# where Debian/Ubuntu install libX11.so, libasound.so and libEGL.so -- SDL3 then
+# reports "Could NOT find X11" / "Could NOT find ALSA" and aborts configuration
+# with "SDL could not find X11 or Wayland development libraries".
 CMAKE_EXTRA_ARGS=(
     -DCMAKE_SYSTEM_NAME=Linux
     -DCMAKE_SYSTEM_PROCESSOR=aarch64
+    -DCMAKE_LIBRARY_ARCHITECTURE="${TARGET_TRIPLE%%.*}"
     -DCMAKE_BUILD_TYPE=Release
     -DCMAKE_C_COMPILER="$BDIR/bin/zig-cc"
     -DCMAKE_CXX_COMPILER="$BDIR/bin/zig-cxx"
@@ -163,6 +171,10 @@ CMAKE_EXTRA_ARGS=(
     -DSDL_X11_SHARED=ON
     -DSDL_KMSDRM=ON
     -DSDL_KMSDRM_SHARED=ON
+    # KMSDRM additionally needs HAVE_OPENGL_EGL, which SDL3 only probes when
+    # SDL_OPENGL/SDL_OPENGLES is ON (cmake/sdlchecks.cmake CheckEGL). Both are
+    # OFF for the Vulkan runtime by design, so KMSDRM stays disabled until a
+    # Vulkan-backed KMS path exists -- Wayland/X11 are the windowing targets.
     -DSDL_ALSA=ON
     -DSDL_ALSA_SHARED=ON
     -DSDL_PULSEAUDIO=ON
